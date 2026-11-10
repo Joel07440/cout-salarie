@@ -55,6 +55,15 @@ summary{cursor:pointer;font-weight:600;font-size:14px}
 .adv{display:flex;flex-direction:column;gap:14px;margin-top:14px}
 .adv select,.adv input{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.field.sm{gap:4px;min-width:0}
+.lbl2{font-size:13px;font-weight:500;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ctl{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+.rate-in{position:relative}
+.rate-in input{padding-right:34px;font-weight:700;font-size:18px;font-variant-numeric:tabular-nums}
+.rate-in span{position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--muted)}
+.chip{font-size:11px;font-weight:600;padding:1px 8px;border-radius:999px;background:var(--soft);color:var(--muted)}
+.chip.man{background:var(--accent);color:var(--accent-ink)}
+button.link{align-self:flex-start;background:none;border:0;padding:0;color:var(--accent);font:inherit;font-size:13px;font-weight:600;cursor:pointer;text-decoration:underline}
 .results{display:flex;flex-direction:column;gap:24px;min-width:0}
 .kpi{display:grid;grid-template-columns:minmax(0,1.4fr) repeat(3,minmax(0,1fr));gap:0;padding:0;overflow:hidden}
 .kpi>div{padding:18px 20px;border-left:1px solid var(--line);display:flex;flex-direction:column;gap:4px;min-width:0}
@@ -129,6 +138,29 @@ tr.reduc td{color:var(--neg)}
         <p class="hint" id="mode-hint"></p>
       </div>
 
+      <div class="field">
+        <span class="lbl">Impôt du salarié</span>
+        <div class="row2">
+          <div class="field sm">
+            <label class="lbl2" for="situation">Situation</label>
+            <select class="ctl" id="situation">
+              <option value="seul">Seul(e)</option>
+              <option value="couple">Marié / pacsé</option>
+            </select>
+          </div>
+          <div class="field sm">
+            <label class="lbl2" for="enfants">Enfants à charge</label>
+            <input class="ctl" id="enfants" type="number" inputmode="numeric" min="0" max="10" step="1" value="0">
+          </div>
+        </div>
+        <div class="field sm">
+          <label class="lbl2" for="pasrate">Taux de prélèvement à la source <span class="chip" id="pas-chip">calculé</span></label>
+          <div class="rate-in"><input class="ctl" id="pasrate" type="number" inputmode="decimal" min="0" max="45" step="0.1" value="0"><span>%</span></div>
+        </div>
+        <p class="hint" id="pas-hint"></p>
+        <button type="button" class="link" id="pas-reset" hidden>Revenir au taux calculé</button>
+      </div>
+
       <details>
         <summary>Paramètres de l'entreprise</summary>
         <div class="adv">
@@ -143,17 +175,6 @@ tr.reduc td{color:var(--neg)}
           <div class="field">
             <label class="lbl" for="at">Taux accident du travail (%)</label>
             <input id="at" type="number" min="0" max="10" step="0.01" value="2.00">
-          </div>
-          <div class="field">
-            <label class="lbl" for="pasmode">Taux d'impôt du salarié</label>
-            <div class="row2">
-              <select id="pasmode">
-                <option value="grille">Taux neutre</option>
-                <option value="perso">Taux personnalisé</option>
-              </select>
-              <input id="pasrate" type="number" min="0" max="45" step="0.1" value="7.5" aria-label="Taux personnalisé en %" disabled>
-            </div>
-            <p class="hint">Le taux personnalisé figure sur la fiche de paie du salarié.</p>
           </div>
         </div>
       </details>
@@ -187,7 +208,7 @@ tr.reduc td{color:var(--neg)}
 
       <div class="notes">
         <p><strong>Estimation 2026</strong> pour un salarié du secteur privé à temps plein, non cadre, payé sur 12 mois. Paramètres : SMIC 1 823,03 € brut, plafond de la Sécurité sociale 4 005 € par mois, réduction générale dégressive (RGDU) en vigueur depuis le 1er janvier 2026.</p>
-        <p>Ne sont pas inclus : mutuelle et prévoyance d'entreprise, versement mobilité, taxe sur les salaires, conventions collectives particulières. Le taux neutre d'impôt suit la grille de la métropole. Pour une paie réelle, faites valider par votre expert-comptable.</p>
+        <p>Ne sont pas inclus : mutuelle et prévoyance d'entreprise, versement mobilité, taxe sur les salaires, conventions collectives particulières. Le taux d'impôt calculé applique le barème progressif (abattement de 10 %, quotient familial, décote) en supposant que ce salaire est le seul revenu du foyer ; la demi-part de parent isolé n'est pas comptée. Pour une paie réelle, faites valider par votre expert-comptable.</p>
       </div>
     </div>
   </div>
@@ -210,9 +231,22 @@ const CATS = {
 };
 const ORDER = ["net","pas","retS","csg","retP","sante","fam","cho","autres"];
 
-// Grille de taux neutre du prélèvement à la source (métropole, base mensuelle)
-const GRILLE = [[1620,0],[1683,.5],[1791,1.3],[1911,2.1],[2042,2.9],[2151,3.5],[2294,4.1],[2714,5.3],[3107,7.5],[3539,9.9],[3983,11.9],[4648,13.8],[5574,15.8],[6974,17.9],[8711,20],[12091,24],[16376,28],[25706,33],[55062,38],[Infinity,43]];
-const tauxNeutre = ni => { for (const [max,r] of GRILLE) if (ni <= max) return r; return 43; };
+// Barème progressif de l'impôt sur le revenu (estimation 2026, par part)
+const BAREME = [[11600,0],[29579,.11],[84577,.30],[181917,.41],[Infinity,.45]];
+const irParPart = q => { let t = 0, prev = 0; for (const [lim,r] of BAREME){ if (q > prev) t += (Math.min(q,lim)-prev)*r; prev = lim; } return t; };
+const nbParts = (couple, enfants) => (couple ? 2 : 1) + (enfants <= 2 ? enfants*0.5 : 1 + (enfants-2));
+function impotAnnuel(R, couple, enfants){
+  const abat = Math.min(Math.max(0.1*R, 509), 14556, R);        // abattement de 10 % pour frais
+  const rni = Math.max(0, R - abat);
+  const base = couple ? 2 : 1, parts = nbParts(couple, enfants);
+  let imp = parts*irParPart(rni/parts);
+  imp = Math.max(imp, base*irParPart(rni/base) - (parts-base)*2*1807); // plafonnement du quotient familial
+  const [seuil, forfait] = couple ? [3277,1483] : [1982,897];      // décote
+  if (imp < seuil) imp = Math.max(0, imp - (forfait - 0.4525*imp));
+  return imp;
+}
+// Taux du foyer = impôt annuel / revenu net imposable annuel (ce salaire étant le seul revenu du foyer)
+const tauxBareme = (ni, o) => { const R = ni*12; return R > 0 ? impotAnnuel(R, o.couple, o.enfants)/R*100 : 0; };
 
 function calc(B, o){
   const t1 = Math.min(B, P.pss);
@@ -263,7 +297,7 @@ function calc(B, o){
 
   const net = B - totSal;
   const netImposable = net + sal.filter(l=>l.imposable).reduce((s,l)=>s+l.amt,0);
-  const pasRate = o.pasMode === "perso" ? o.pasRate : tauxNeutre(netImposable);
+  const pasRate = o.pasMode === "perso" ? o.pasRate : tauxBareme(netImposable, o);
   const pas = Math.max(0, netImposable*pasRate/100);
   const netApres = net - pas;
   const cost = B + totPat - reduc;
@@ -291,25 +325,41 @@ const rt = v => (Math.round(v*1000)/1000).toLocaleString("fr-FR",{maximumFractio
 const $ = id => document.getElementById(id);
 const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 
+let pasManual = false;
 function opts(){
   return {
     eff: $("effectif").value,
     at: Math.max(0, parseFloat($("at").value) || 0),
-    pasMode: $("pasmode").value,
-    pasRate: Math.max(0, parseFloat($("pasrate").value) || 0)
+    couple: $("situation").value === "couple",
+    enfants: Math.min(10, Math.max(0, Math.floor(parseFloat($("enfants").value) || 0))),
+    pasMode: pasManual ? "perso" : "auto",
+    pasRate: Math.min(100, Math.max(0, parseFloat(String($("pasrate").value).replace(",", ".")) || 0))
   };
 }
+$("pasrate").addEventListener("input", () => { pasManual = true; });
+$("situation").addEventListener("change", () => { pasManual = false; });
+$("enfants").addEventListener("input", () => { pasManual = false; });
+$("pas-reset").addEventListener("click", () => { pasManual = false; render(); });
 
 function render(){
   const mode = document.querySelector('input[name="mode"]:checked').value;
   $("mode-hint").textContent = mode === "apres"
     ? "Montant viré sur le compte, après le prélèvement à la source."
     : "Montant net figurant sur la fiche de paie, avant le prélèvement à la source.";
-  $("pasrate").disabled = $("pasmode").value !== "perso";
   const v = parseFloat($("amount").value);
   if (!(v > 0)){ $("err").hidden = false; return; }
   $("err").hidden = true;
-  const r = solve(v, mode, opts());
+  const o = opts();
+  const r = solve(v, mode, o);
+
+  if (!pasManual) $("pasrate").value = (Math.round(r.pasRate*10)/10).toFixed(1);
+  $("pas-chip").textContent = pasManual ? "saisi" : "calculé";
+  $("pas-chip").classList.toggle("man", pasManual);
+  $("pas-reset").hidden = !pasManual;
+  const parts = nbParts(o.couple, o.enfants);
+  $("pas-hint").textContent = pasManual
+    ? "Taux saisi à la main, par exemple celui de la fiche de paie du salarié."
+    : "Calculé selon le barème de l'impôt pour " + parts.toLocaleString("fr-FR") + (parts > 1 ? " parts" : " part") + ", en supposant que ce salaire est le seul revenu du foyer. Il suit le salaire et reste modifiable.";
 
   $("k-cost").textContent = e0.format(r.cost*12);
   $("k-cost-m").textContent = e0.format(r.cost) + " par mois";
@@ -380,7 +430,7 @@ function drawTable(r){
   const row = (cls, label, rate, m) => `<tr class="${cls}"><td>${label}</td><td class="rate">${rate}</td><td>${e2.format(m)}</td><td>${e0.format(m*12)}</td></tr>`;
   let h = "";
   h += row("tot", dot("net")+"Salaire net après impôt", "", r.netApres);
-  h += row("det", dot("pas")+"Impôt sur le revenu (prélèvement à la source)", rt(r.pasRate), r.pas);
+  h += row("det", dot("pas")+"Impôt sur le revenu (prélèvement à la source)", rt(Math.round(r.pasRate*10)/10), r.pas);
   h += row("tot", "Salaire net", "", r.net);
   h += `<tr class="sec"><td colspan="4">Cotisations salariales</td></tr>`;
   r.sal.filter(l=>l.amt>0.004).forEach(l => h += row("det", dot(l.cat)+l.label, rt(l.rate), l.amt));
